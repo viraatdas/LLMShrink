@@ -317,7 +317,7 @@ if __name__ == "__main__":
     # default settings will overfit a tiny batch of data
     # and save model weights and debug state to disk on the first iteration
     # if you'd like to e.g. time the forward pass only, call this script as:
-    # python train_gpt2.py --inference_only 1 --write_tensors 0 --sequence_length 1024
+    # python torch_train_gpt2.py --inference_only 1 --write_tensors 0 --sequence_length 1024
     parser = argparse.ArgumentParser()
     parser.add_argument("--write_tensors", type=int, default=1, help="write tensors to disk")
     parser.add_argument("--inference_only", type=int, default=0, help="only run inference")
