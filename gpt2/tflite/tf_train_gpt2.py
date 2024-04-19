@@ -411,8 +411,8 @@ if __name__ == "__main__":
     data_iter = iter(get_batch())
     x, y = next(data_iter) # we'll overfit this batch below
 
-    # Create an optimizer
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+    # Use the legacy Adam optimizer for better performance on M1/M2 Macs
+    optimizer = tf.keras.optimizers.legacy.Adam(learning_rate=1e-4)
 
     # Define the training loop
     @tf.function
