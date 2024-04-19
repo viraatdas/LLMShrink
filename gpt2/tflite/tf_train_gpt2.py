@@ -149,21 +149,15 @@ class GPT(keras.Model):
         print("loading weights from pretrained gpt: %s" % model_type)
 
         # n_layer, n_head and n_embd are determined from model_type
-        config_args = {
-            'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
-            'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
-            'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
-            'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
-        }[model_type]
+        # config_args = {
+        #     'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
+        #     'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
+        #     'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
+        #     'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
+        # }[model_type]
 
-        config_args['vocab_size'] = 50257 # always 50257 for GPT model checkpoints
-        config_args['block_size'] = 1024 # always 1024 for GPT model checkpoints
-        # create a from-scratch initialized minGPT model
-        config = GPTConfig(**config_args)
-        model = GPT(config)
-        sd = model.state_dict()
-        sd_keys = sd.keys()
-        sd_keys = [k for k in sd_keys if not k.endswith('.attn.bias')] # discard this mask / buffer, not a param
+        # config_args['vocab_size'] = 50257 # always 50257 for GPT model checkpoints
+        # config_args['block_size'] = 1024 # always 1024 for GPT model checkpoints
 
         # init a huggingface/transformers model
         model_hf = TFGPT2LMHeadModel.from_pretrained(model_type)
@@ -403,19 +397,17 @@ if __name__ == "__main__":
 
     # lightweight dataloader
     def get_batch():
-        assert B*T+1 <= len(tokens), "not enough tokens"
-        # for 338,025 tokens. E.g. with B=8 T=1024, this will yield 41 batches before looping
-        i = 0
-        while True:
-            x = tokens[i:i+B*T].view(B, T)
-            y = tokens[i+1:i+B*T+1].view(B, T)
-            yield x, y
-            i += B*T
-            if i + B*T + 1 >= len(tokens):
-                i = 0 # in prod we'd want to randomize the start point a bit
+      assert B*T+1 <= len(tokens), "not enough tokens"
+      i = 0
+      while True:
+          x = tf.reshape(tokens[i:i+B*T], (B, T))
+          y = tf.reshape(tokens[i+1:i+B*T+1], (B, T))
+          yield x, y
+          i += B*T
+          if i + B*T + 1 >= len(tokens):
+              i = 0
 
     # Forward-backward for a few iterations
-
     data_iter = iter(get_batch())
     x, y = next(data_iter) # we'll overfit this batch below
 
