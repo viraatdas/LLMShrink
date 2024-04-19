@@ -337,14 +337,20 @@ if __name__ == "__main__":
     import argparse
     import tiktoken
 
-    # Parse command-line arguments
+    # default settings will overfit a tiny batch of data
+    # and save model weights and debug state to disk on the first iteration
+    # if you'd like to e.g. time the forward pass only, call this script as:
+    # python tf_train_gpt2.py --inference_only 1 --write_tensors 0 --sequence_length 1024
     parser = argparse.ArgumentParser()
     parser.add_argument("--write_tensors", type=int, default=1, help="write tensors to disk")
     parser.add_argument("--inference_only", type=int, default=0, help="only run inference")
+    parser.add_argument("--compile", type=int, default=0, help="torch.compile the model")
+    parser.add_argument("--tensorcores", type=int, default=0, help="use tensorcores")
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations to run")
     parser.add_argument("--batch_size", type=int, default=4, help="batch size")
     parser.add_argument("--sequence_length", type=int, default=64, help="sequence length")
     args = parser.parse_args()
+
     B, T = args.batch_size, args.sequence_length
     assert 1 <= T <= 1024, "Sequence length must be between 1 and 1024"
 
@@ -408,44 +414,50 @@ if __name__ == "__main__":
             if i + B*T + 1 >= len(tokens):
                 i = 0 # in prod we'd want to randomize the start point a bit
 
-    # forward backward for a few iterations
+    # Forward-backward for a few iterations
+
     data_iter = iter(get_batch())
     x, y = next(data_iter) # we'll overfit this batch below
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+    # Create an optimizer
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+
+    # Define the training loop
+    @tf.function
+    def train_step(x, y):
+        with tf.GradientTape() as tape:
+            logits, loss = model(x, y, training=True)
+        gradients = tape.gradient(loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return loss, logits
+
     timings = []
     for i in range(args.num_iterations):
         t0 = time.time()
-        logits, loss = model(x, y)
-        if not args.inference_only:
-            optimizer.zero_grad()
-            loss.backward()
-            # on the first iteration only, save the state dict to file for later reference
-            if i == 0 and args.write_tensors:
-                write_model(model, "gpt2_124M.bin")
-                write_state(model, x, y, logits, loss, "gpt2_124M_debug_state.bin")
-            optimizer.step()
-        if device == "mps":
-            torch.mps.synchronize()
-        elif device == "cuda":
-            torch.cuda.synchronize()
-        t1 = time.time()
-        if i > args.num_iterations - 20:
-            timings.append(t1-t0)
-        print(f"iteration {i}, loss: {loss.item()}, time: {(t1-t0)*1000:.3f}ms")
-    if len(timings) > 0:
-        print(f"final 20 iters avg: {np.mean(timings)*1000:.3f}ms")
+        loss, logits = train_step(x, y)
         
-    # before we end, let's also do one round of inference
-    # we'll kick off the generation with "<|endoftext|>", which designates the start of a new sequence
+        if i == 0 and args.write_tensors:
+            model.save_weights("gpt2_124M.weights")
+            # Write state is not straightforward in TensorFlow
+
+        if i > args.num_iterations - 20:
+            timings.append(time.time() - t0)
+        
+        print(f"iteration {i}, loss: {loss}, time: {(time.time() - t0) * 1000:.3f}ms")
+
+    if len(timings) > 0:
+        print(f"final 20 iters avg: {np.mean(timings) * 1000:.3f}ms")
+
+    # Inference
     start = "<|endoftext|>"
     start_ids = encode(start)
-    x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+    x = tf.constant([start_ids], dtype=tf.int32)
 
-    # run generation for 16 time steps (tokens)
     max_new_tokens = 16
     temperature = 1.0
     top_k = 40
-    model.eval()
-    y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-    print(decode(y[0].tolist()))
+
+    # TensorFlow has a built-in beam search function
+    outputs = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+    print(decode(outputs[0].numpy().tolist()))
     print('---------------')

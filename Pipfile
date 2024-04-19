@@ -10,6 +10,7 @@ transformers = "*"
 tqdm = "*"
 tensorflow = "*"
 keras = "*"
+tf-keras = "*"
 
 [dev-packages]
 
