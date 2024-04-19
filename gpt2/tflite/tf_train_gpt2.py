@@ -17,8 +17,6 @@ from keras import layers
 from collections import OrderedDict
 import torch
 
-from gpt2.tflite.custom_util import custom_cross_entropy 
-
 
 
 
@@ -82,6 +80,60 @@ class GPT(keras.Model):
             loss = None
 
         return logits, loss
+    
+    @classmethod
+    def from_pretrained(cls, model_type):
+        """Loads pretrained GPT-2 model weights from huggingface"""
+        assert model_type in {'gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'}
+        from transformers import TFGPT2LMHeadModel
+        print("loading weights from pretrained gpt: %s" % model_type)
+
+        # n_layer, n_head and n_embd are determined from model_type
+        config_args = {
+            'gpt2':         dict(n_layer=12, n_head=12, n_embd=768),  # 124M params
+            'gpt2-medium':  dict(n_layer=24, n_head=16, n_embd=1024), # 350M params
+            'gpt2-large':   dict(n_layer=36, n_head=20, n_embd=1280), # 774M params
+            'gpt2-xl':      dict(n_layer=48, n_head=25, n_embd=1600), # 1558M params
+        }[model_type]
+
+        config_args['vocab_size'] = 50257 # always 50257 for GPT model checkpoints
+        config_args['block_size'] = 1024 # always 1024 for GPT model checkpoints
+        # create a from-scratch initialized minGPT model
+        config = GPTConfig(**config_args)
+        model = GPT(config)
+        sd = model.state_dict()
+        sd_keys = sd.keys()
+        sd_keys = [k for k in sd_keys if not k.endswith('.attn.bias')] # discard this mask / buffer, not a param
+
+        # init a huggingface/transformers model
+        model_hf = TFGPT2LMHeadModel.from_pretrained(model_type)
+
+        return model_hf
+    
+  
+
+def custom_cross_entropy(y_true, y_pred, ignore_index=-1):
+    # Create a mask by comparing the target tensor with the ignore_index
+    mask = tf.not_equal(y_true, ignore_index)
+    
+    # Convert mask to 1s and 0s (True becomes 1, False becomes 0)
+    mask = tf.cast(mask, dtype=tf.float32)
+    
+    # Flatten the mask and the true labels
+    y_true_flattened = tf.reshape(y_true, [-1])
+    mask_flattened = tf.reshape(mask, [-1])
+    
+    # Calculate cross-entropy loss
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y_true_flattened, logits=y_pred)
+    
+    # Apply the mask to the loss
+    loss *= mask_flattened
+    
+    # Average the loss, but only over non-ignored entries
+    loss = tf.reduce_sum(loss) / tf.reduce_sum(mask_flattened)
+    
+    return loss
+
     
 if __name__ == "__main__":
     import time
@@ -206,3 +258,5 @@ if __name__ == "__main__":
     y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
     print(decode(y[0].tolist()))
     print('---------------')
+
+
