@@ -3,13 +3,15 @@ import tensorflow as tf
 
 model_path = 'gpt2_model.tflite'
 
+model = TFGPT2LMHeadModel.from_pretrained('gpt2')
+tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+
 def convert_model_to_tflite(output_path='gpt2_model.tflite'):
     # Load the model and tokenizer
-    model = TFGPT2LMHeadModel.from_pretrained('gpt2')
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+ 
 
     # Encode input context
-    text = "Once upon a time in a land far, far away,"  # You can replace this with any text seed
+    text = "Once upon a time in a land far, far away,"  
     encoded_input = tokenizer.encode(text, return_tensors='tf')
 
     # Generate text using the model
@@ -46,8 +48,6 @@ def convert_model_to_tflite(output_path='gpt2_model.tflite'):
 def inference_tflite(model_path, text):
     interpreter = tf.lite.Interpreter(model_path=model_path)
     interpreter.allocate_tensors()
-
-    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
     # Encode the text using the same tokenizer used during training
     encoded_input = tokenizer.encode(text, return_tensors='tf')
