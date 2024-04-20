@@ -11,6 +11,7 @@ tqdm = "*"
 tensorflow = "*"
 keras = "*"
 tf-keras = "*"
+keras-nlp = "*"
 
 [dev-packages]
 
