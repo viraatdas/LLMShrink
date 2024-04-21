@@ -13,6 +13,7 @@ def convert_model_to_tflite(output_path='gpt2_model.tflite'):
     # Encode input context
     text = "Once upon a time in a land far, far away,"  
     encoded_input = tokenizer.encode(text, return_tensors='tf')
+    
 
     # Generate text using the model
     output_sequences = model.generate(
@@ -72,12 +73,12 @@ def inference_tflite(model_path, text):
     return output_data
 
 
-convert_model_to_tflite(model_path)
+# convert_model_to_tflite(model_path)
 
 text = "Hello, my name is "
 output = inference_tflite(model_path, text)
-print(output)
-
+print(output[0].shape)
+print(tokenizer.decode(output[0]))
 
 
 
